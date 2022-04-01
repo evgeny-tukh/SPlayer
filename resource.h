@@ -11,3 +11,9 @@
 
 #define ID_EXIT                                 200
 
+#define IDC_SENTENCE                            201
+#define IDC_PORT                                202
+#define IDC_BAUD                                203
+#define IDC_STARTSTOP                           204
+
+
