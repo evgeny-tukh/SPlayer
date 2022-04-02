@@ -6,7 +6,7 @@
 #include "tools.h"
 
 struct Ctx {
-    HWND mainWnd, sentenceEditor, portSelector, baudSelector, startStop;
+    HWND mainWnd, sentenceEditor, portSelector, baudSelector, startStop, composeCRC, sendOnce;
     HINSTANCE instance;
     std::thread *runner;
     std::string port;
@@ -15,6 +15,34 @@ struct Ctx {
 };
 
 char const *CLASS_NAME = "SimplePlayerWnd";
+
+void sendOnce (Ctx *ctx) {
+    HANDLE port = CreateFile (
+        ctx->port.c_str (),
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        nullptr,
+        OPEN_EXISTING,
+        0,
+        nullptr
+    );
+    if (port != INVALID_HANDLE_VALUE) {
+        char buffer [100];
+        unsigned long bytesWritten;
+        memset (buffer, 0, sizeof (buffer));
+        if (GetWindowText (ctx->sentenceEditor, buffer, 83)) {
+            std::string output (buffer);
+            output += "\r\n";
+            WriteFile (port, output.c_str (), output.length (), & bytesWritten, nullptr);
+        }
+
+        CloseHandle (port);
+    } else {
+        char msg [1000];
+        sprintf (msg, "Unable to open %s, error %d", ctx->port.c_str (), GetLastError ());
+        MessageBox (ctx->mainWnd, msg, "Error", MB_ICONEXCLAMATION);
+    }
+}
 
 void runnerProc (Ctx *ctx) {
     HANDLE port = INVALID_HANDLE_VALUE;
@@ -56,11 +84,13 @@ HWND createControl (HWND parent, Ctx *ctx, const char *className, int x, int y, 
 void start (Ctx *ctx) {
     EnableWindow (ctx->portSelector, FALSE);
     EnableWindow (ctx->baudSelector, FALSE);
+    EnableWindow (ctx->sendOnce, FALSE);
 }
 
 void stop (Ctx *ctx) {
     EnableWindow (ctx->portSelector, TRUE);
     EnableWindow (ctx->baudSelector, TRUE);
+    EnableWindow (ctx->sendOnce, TRUE);
 }
 
 bool confirmExit (HWND wnd) {
@@ -96,9 +126,36 @@ void updatePort (Ctx *ctx) {
     }
 }
 
+void composeCRC (Ctx *ctx) {
+    char text [256];
+    GetWindowText (ctx->sentenceEditor, text, sizeof (text));
+    if (text [0] == '!' || text [0] == '$') {
+        char *asterisk = strchr (text, '*');
+
+        if (!asterisk) {
+            asterisk = text + strlen (text);
+            asterisk [0] = '*';
+            asterisk [1] = 'h';
+            asterisk [2] = 'h';
+            asterisk [3] = '\0';
+        }
+
+        uint8_t crc = text [1];
+        for (size_t i = 2; text [i] != '*'; ++ i) {
+            crc ^= (uint8_t) text [i];
+        }
+        sprintf (asterisk + 1, "%02X", crc);
+        SetWindowText (ctx->sentenceEditor, text);
+    }
+}
+
 void doCommand (HWND wnd, uint16_t cmd) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
     switch (cmd) {
+        case IDC_SEND_ONCE:
+            sendOnce (ctx); break;
+        case IDC_COMPOSE_CRC:
+            composeCRC (ctx); break;
         case IDC_BAUD:
             updateBaud (ctx); break;
         case IDC_PORT:
@@ -122,6 +179,11 @@ void initWindow (HWND wnd, WPARAM param1, LPARAM param2) {
     CREATESTRUCTA *data = (CREATESTRUCTA *) param2;
     Ctx *ctx = (Ctx *) data->lpCreateParams;
     std::vector<uint32_t> bauds { 4800, 9600, 14400, 19200, 38400, 115200 };
+    std::vector<std::string> sentenceTemplates {
+        "$RATLL,01,5915.233,N,00915.234,E,001,115959.30,T,*hh",
+        "$RATTM,01,1.2,031.2,T,10.1,026.3,T,,,K,T01,T,,115959.30,A*hh",
+        "$RAGGA,115959.30,5915.233,N,00915.234,E,2,10,,,M,,M,,*hh",
+    };
 
     SetWindowLongPtr (wnd, GWLP_USERDATA, (LONG_PTR) data->lpCreateParams);
 
@@ -131,11 +193,16 @@ void initWindow (HWND wnd, WPARAM param1, LPARAM param2) {
     createControl (wnd, ctx, "STATIC", 10, 10, 120, 22, SS_SIMPLE, IDC_STATIC, "Sentence template");
     createControl (wnd, ctx, "STATIC", 10, 40, 120, 22, SS_SIMPLE, IDC_STATIC, "Port");
     createControl (wnd, ctx, "STATIC", 10, 70, 120, 22, SS_SIMPLE, IDC_STATIC, "Baud");
-    ctx->sentenceEditor = createControl (wnd, ctx, "EDIT", 140, 10, 300, 21, WS_BORDER | WS_TABSTOP | ES_UPPERCASE, IDC_SENTENCE);
+    ctx->sentenceEditor = createControl (wnd, ctx, "COMBOBOX", 140, 10, 530, 200, WS_BORDER | WS_TABSTOP | CBS_DROPDOWN, IDC_SENTENCE);
     ctx->portSelector = createControl (wnd, ctx, "COMBOBOX", 140, 40, 100, 200, CBS_DROPDOWNLIST | WS_TABSTOP, IDC_PORT);
     ctx->baudSelector = createControl (wnd, ctx, "COMBOBOX", 140, 70, 100, 200, CBS_DROPDOWNLIST | WS_TABSTOP, IDC_BAUD);
     ctx->startStop = createControl (wnd, ctx, "BUTTON", 140, 100, 100, 22, BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP, IDC_STARTSTOP, "&Start");
+    ctx->sendOnce = createControl (wnd, ctx, "BUTTON", 250, 100, 100, 22, WS_TABSTOP, IDC_SEND_ONCE, "Send &once");
+    ctx->composeCRC = createControl (wnd, ctx, "BUTTON", 530, 40, 140, 22, WS_TABSTOP, IDC_COMPOSE_CRC, "Compose CRC");
 
+    for (auto& sentence: sentenceTemplates) {
+        SendMessage (ctx->sentenceEditor, CB_ADDSTRING, 0, (LPARAM) sentence.c_str ());
+    }
     for (auto& port: ports) {
         SendMessage (ctx->portSelector, CB_ADDSTRING, 0, (LPARAM) port.c_str ());
     }
@@ -145,6 +212,7 @@ void initWindow (HWND wnd, WPARAM param1, LPARAM param2) {
     }
     SendMessage (ctx->portSelector, CB_SETCURSEL, 0, 0);
     SendMessage (ctx->baudSelector, CB_SETCURSEL, 0, 0);
+    SendMessage (ctx->sentenceEditor, CB_SETCURSEL, 0, 0);
 
     if (!ports.empty ()) ctx->port = ports [0];
     ctx->baud = bauds [0];
@@ -204,7 +272,7 @@ int WINAPI WinMain (HINSTANCE instance, HINSTANCE prevInstance, char *cmdLine, i
         WS_OVERLAPPEDWINDOW | WS_VISIBLE,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        500,
+        700,
         300,
         HWND_DESKTOP,
         mainMenu,

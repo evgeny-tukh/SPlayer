@@ -15,5 +15,7 @@
 #define IDC_PORT                                202
 #define IDC_BAUD                                203
 #define IDC_STARTSTOP                           204
+#define IDC_COMPOSE_CRC                         205
+#define IDC_SEND_ONCE                           206
 
 
