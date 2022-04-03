@@ -33,7 +33,9 @@ void sendOnce (Ctx *ctx) {
         if (GetWindowText (ctx->sentenceEditor, buffer, 83)) {
             std::string output (buffer);
             output += "\r\n";
+            Sleep (100);
             WriteFile (port, output.c_str (), output.length (), & bytesWritten, nullptr);
+            Sleep (100);
         }
 
         CloseHandle (port);
@@ -181,7 +183,7 @@ void initWindow (HWND wnd, WPARAM param1, LPARAM param2) {
     std::vector<uint32_t> bauds { 4800, 9600, 14400, 19200, 38400, 115200 };
     std::vector<std::string> sentenceTemplates {
         "$RATLL,01,5915.233,N,00915.234,E,001,115959.30,T,*hh",
-        "$RATTM,01,1.2,031.2,T,10.1,026.3,T,,,K,T01,T,,115959.30,A*hh",
+        "$RATTM,01,0.1,031.2,T,10.1,026.3,T,,,K,T01,T,,115959.30,A*hh",
         "$RAGGA,115959.30,5915.233,N,00915.234,E,2,10,,,M,,M,,*hh",
     };
 
