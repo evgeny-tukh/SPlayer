@@ -16,7 +16,10 @@ struct Ctx {
 
 char const *CLASS_NAME = "SimplePlayerWnd";
 
+void composeCRC (Ctx *ctx);
+
 void sendOnce (Ctx *ctx) {
+    composeCRC (ctx);
     HANDLE port = CreateFile (
         ctx->port.c_str (),
         GENERIC_READ | GENERIC_WRITE,
@@ -84,6 +87,7 @@ HWND createControl (HWND parent, Ctx *ctx, const char *className, int x, int y, 
 }
 
 void start (Ctx *ctx) {
+    composeCRC (ctx);
     EnableWindow (ctx->portSelector, FALSE);
     EnableWindow (ctx->baudSelector, FALSE);
     EnableWindow (ctx->sendOnce, FALSE);
@@ -185,6 +189,7 @@ void initWindow (HWND wnd, WPARAM param1, LPARAM param2) {
         "$RATLL,01,5915.233,N,00915.234,E,001,115959.30,T,*hh",
         "$RATTM,01,0.1,031.2,T,10.1,026.3,T,,,K,T01,T,,115959.30,A*hh",
         "$RAGGA,115959.30,5915.233,N,00915.234,E,2,10,,,M,,M,,*hh",
+        "$HEHDT,005.1,T*hh",
     };
 
     SetWindowLongPtr (wnd, GWLP_USERDATA, (LONG_PTR) data->lpCreateParams);
